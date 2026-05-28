@@ -15,6 +15,87 @@ reçetesidir.
 - Bazı ISP'ler 80'i bloklar; öyle bir durumda Cloudflare proxy ya da Tailscale
   alternatif.
 
+## Kavramlar: Token ve Room
+
+İkisi de **shared secret** — server ile tüm istemcilerin **birebir aynı string'i**
+biliyor olması gerekli. Üretildikleri yer fark etmez (sunucuda, lokalde, kafanda);
+önemli olan iki yere de aynı yazılması.
+
+### Token — auth (şifre)
+
+WS bağlantısının kimlik kontrolü. İstemci bağlanırken URL'de
+`?token=...` parametresi gönderir, sunucu `config.toml`'da tanımlı token ile
+karşılaştırır. Eşleşmezse 401, eşleşirse upgrade.
+
+- **Nasıl üretilir**: rastgele, en az 128-bit entropi. Önerilen:
+  ```bash
+  openssl rand -hex 32   # 64 karakter, ~256-bit
+  ```
+- **Nereye gider**:
+  - Sunucuda: `/opt/clipsync/config.toml` → `[[rooms]] token = "..."`
+  - Her istemcide: `clipsync.exe` yanındaki `config.json` → `"Token": "..."`
+- **Niye gizli**: Bu string'i bilen herkes odaya bağlanıp yazılanları
+  görebilir. O yüzden config dosyaları `.gitignore`'da, repo'ya commit'lenmemeli.
+- **Rotate etmek**: yeni token üret → sunucu config.toml'da güncelle →
+  `sudo systemctl restart clipsync-server` → tüm istemcilerin config.json'unu da
+  yeni token'la güncelle, uygulamayı yeniden başlat. Eski token'lı istemciler
+  bağlanamaz.
+
+### Room — mantıksal kanal
+
+Aynı sunucuyu **birden fazla bağımsız grup** kullanabilsin diye. Bir odadaki
+istemciler birbirinin pano'sunu görür; **farklı odadakiler birbirini hiç
+görmez**.
+
+- **Senin tipik durumun**: tek bir oda yeterli (örn. `okan-home`,
+  `ev`, `kisisel` — istediğin isim). Tüm makineler bu odaya bağlanır.
+- **Ne zaman birden fazla**:
+  - Arkadaşına aynı sunucunu kullandırırken (ona `ali-evi` odası, ayrı token).
+  - İş ↔ kişisel makinelerin panoları karışmasın.
+  - Aynı odada test ortamı kuyusu (`test`) ve gerçek (`prod`) ayırmak.
+- **Niye token'a ek olarak room**: Token tek başına yeterli auth, ama room
+  isolation katmanı. Aynı sunucuda iki ayrı grup, **farklı token + farklı room
+  id** ile birbirini hiç fark etmez. (Aynı token + farklı room aslında
+  konfigürasyon hatası olur; her oda için farklı token kullan.)
+
+### Üretim ve dağıtım akışı
+
+Bir kere yapılır:
+
+1. Bir tarafa otur (sunucu, lokal makine, fark etmez).
+2. `openssl rand -hex 32` ile token üret. Hayatta sadece bu kere göreceksin —
+   bir yere kaydet (parola yöneticisine).
+3. Bir room adı seç (örn. `okan-home`).
+4. Sunucu `config.toml`'una koy:
+   ```toml
+   [[rooms]]
+   id = "okan-home"
+   token = "BIR-KEZ-URETTIGIN-TOKEN"
+   ```
+5. Her Windows istemcisinin `config.json`'una **aynı** ikiliyi koy:
+   ```json
+   {
+     "ServerUrl": "wss://clip.example.com/ws",
+     "RoomId": "okan-home",
+     "Token": "BIR-KEZ-URETTIGIN-TOKEN"
+   }
+   ```
+6. Sunucu config'i değişince `systemctl restart clipsync-server`. İstemci
+   config'i değişince `clipsync.exe`'i yeniden başlat.
+
+Sunucu çoklu oda destekler — `[[rooms]]` bloğunu ekleyerek istediğin kadar
+oda açabilirsin, her birine ayrı token:
+
+```toml
+[[rooms]]
+id = "okan-home"
+token = "aaaa..."
+
+[[rooms]]
+id = "ali-evi"
+token = "bbbb..."   # farklı, paylaşmıyoruz
+```
+
 ## 1) Sunucuya Rust + Caddy kur
 
 ```bash
@@ -58,6 +139,10 @@ sudo install -o clipsync -g clipsync -m 0755 \
 ```
 
 ## 4) Sunucu config'i
+
+> Token ve room mantığı için bkz. [Kavramlar](#kavramlar-token-ve-room).
+> Burada üreteceğin token ve seçeceğin room id, Adım 9'da istemci config'inde
+> **birebir aynı** olacak.
 
 Güçlü bir token üret:
 
@@ -182,7 +267,13 @@ wscat -c "wss://clip.example.com/ws?room=okan-home&token=YUKARIDAKI-TOKEN"
 }
 ```
 
-İki Windows makineye de aynı dosyayı koy.
+- `RoomId` ve `Token`: Adım 4'tekiyle **birebir aynı**. Tek karakter farkı bile
+  401 sebebi olur.
+- `ServerUrl`: Adım 6'da kullandığın domain, başına `wss://`, sonuna `/ws`.
+- İki (ya da daha fazla) Windows makineye de aynı dosyayı koy. Her birinin
+  `clipsync.exe` yanında ayrı `config.json` olmalı.
+- Config'i değiştirdiysen `clipsync.exe`'i yeniden başlat (tepsi → Çıkış → çift
+  tıkla). Açılışta config oluşturulan klasör, exe'nin bulunduğu klasör.
 
 ## Sorun giderme
 
