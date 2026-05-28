@@ -1,0 +1,14 @@
+[Unit]
+Description=ClipSync WebSocket relay
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/clipsync/clipsync-server /opt/clipsync/config.toml
+Restart=on-failure
+RestartSec=2
+User=clipsync
+WorkingDirectory=/opt/clipsync
+
+[Install]
+WantedBy=multi-user.target

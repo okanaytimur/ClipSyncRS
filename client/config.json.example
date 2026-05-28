@@ -1,0 +1,5 @@
+{
+  "ServerUrl": "wss://clip.ornek.com/ws",
+  "RoomId": "okan-home",
+  "Token": "uzun-rastgele-string-buraya"
+}

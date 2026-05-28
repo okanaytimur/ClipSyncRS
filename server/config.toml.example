@@ -1,0 +1,5 @@
+bind = "127.0.0.1:8080"
+
+[[rooms]]
+id = "okan-home"
+token = "uzun-rastgele-string-buraya"   # öner: `openssl rand -hex 32`

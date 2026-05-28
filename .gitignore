@@ -1,0 +1,5 @@
+/target
+*.log
+/client/config.json
+/server/config.toml
+/.claude
